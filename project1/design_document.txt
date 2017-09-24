@@ -1,0 +1,342 @@
+			+--------------------+
+			|       CS 330       |
+			| PROJECT 1: THREADS |
+			|   DESIGN DOCUMENT  |
+			+--------------------+
+				   
+---- GROUP ----
+
+>> Fill in the names and email addresses of your group members.
+
+Inyoung Cho <ciy405x@kaist.ac.kr>
+FirstName LastName <email@domain.example>
+
+---- PRELIMINARIES ----
+
+>> If you have any preliminary comments on your submission, notes for the
+>> TAs, usage of tokens, or extra credit, please give them here.
+
+>> Please cite any offline or online sources you consulted while
+>> preparing your submission, other than the Pintos documentation, course
+>> text, lecture notes, and course staff.
+
+	Team number: 13
+	Project number: 1
+	# of tokens used: 0
+
+	Sources
+	1. Context switch
+	https://ko.wikipedia.org/wiki/%EB%AC%B8%EB%A7%A5_%EA%B5%90%ED%99%98
+	http://www.linfo.org/context_switch.html
+	https://stackoverflow.com/questions/4732409/context-switch-in-interrupt-handlers
+	2. Multi-processing, Multi-programming, Multi-threading
+	http://proneer.tistory.com/entry/%EB%A9%80%ED%8B%B0%ED%94%84%EB%A1%9C%EC%84%B8%EC%8B%B1-%EB%A9%80%ED%8B%B0%ED%94%84%EB%A1%9C%EA%B7%B8%EB%9E%98%EB%B0%8D-%EB%A9%80%ED%8B%B0%ED%83%9C%EC%8A%A4%ED%82%B9-%EB%A9%80%ED%8B%B0%EC%8A%A4%EB%A0%88%EB%93%9C%EC%97%90-%EA%B4%80%ED%95%98%EC%97%AC
+	3. Process control block
+	https://ko.wikipedia.org/wiki/%ED%94%84%EB%A1%9C%EC%84%B8%EC%8A%A4_%EC%A0%9C%EC%96%B4_%EB%B8%94%EB%A1%9D
+	4. Address space
+	https://ko.wikipedia.org/wiki/%EC%A3%BC%EC%86%8C_%EA%B3%B5%EA%B0%84
+	http://whereisusb.tistory.com/10
+	5. Using secure copy (SCP command)
+	http://dinggur.tistory.com/94
+	6. Semaphore
+	https://ko.wikipedia.org/wiki/%EC%84%B8%EB%A7%88%ED%8F%AC%EC%96%B4
+	7. Thread scheduling
+	http://www.math.uni-hamburg.de/doc/java/tutorial/essential/threads/priority.html
+	8. Lock
+	https://wiki.kldp.org/KoreanDoc/html/EmbeddedKernel-KLDP/start.kerenl.lockkernel.html
+
+			     ALARM CLOCK
+			     ===========
+
+---- DATA STRUCTURES ----
+
+>> A1: Copy here the declaration of each new or changed `struct' or
+>> `struct' member, global or static variable, `typedef', or
+>> enumeration.  Identify the purpose of each in 25 words or less.
+
+	<<thread.h>>
+	enum thread_status
+		{
+			THREAD_SLEEP // 추가. 스레드의 잠자는 상태를 나타냄.
+		};
+	
+	struct thread
+		{
+			int64_t wake_up_tick; // 추가. 스레드의 일어날 틱을 저장한다.
+		};	
+		
+	<<thread.c>>
+	static struct list sleep_list; // 자고있는 스레드들을 list_elem로 
+									  하는 list
+	static int64_t next_wake_up_tick; // 자고있는 스레드들의 
+										 wake_up_tick중 최솟값.
+
+---- ALGORITHMS ----
+
+>> A2: Briefly describe what happens in a call to timer_sleep(),
+>> including the effects of the timer interrupt handler.
+
+	thread_sleep(start + ticks) 를 부른다.
+	먼저 인터럽트를 끈다.
+	idle_thread가 아니면, thread 구조체의 원소인 wake_up_tick 에 
+	start + ticks을 할당.
+	즉, timer_sleep을 콜한 시점으로부터 최소 ticks 만큼 자야함을 
+	저장한다.
+	sleep_list에 current thread를 넣는다.
+	current thread의 상태를 THREAD_SLEEP이라 한다.
+	schedule 함수를 콜하여 다음에 실행될 스레드를 CPU에 올린다.
+	인터럽트를 복귀시킨다. 
+
+>> A3: What steps are taken to minimize the amount of time spent in
+>> the timer interrupt handler?
+
+	sleep_list를 따로 만들어서, 다른 이유로 block된 스레드들은 탐색하지 
+	않는다.
+	sleep_list를 순차적으로 탐색하며 깨워야할 스레드들을 깨운다.
+	순차탐색보다 비교적 무거운 솔팅은 사용하지 않았고, 다른 복잡한 작동들
+	도 없도록 디자인하였다.
+	
+	sleep_list에 원소를 넣을 때 마다 list_insert_ordered 를 이용하여 
+	sleep_list를 항상 정렬된 상태로 만들면	interrupt handler에서는 
+	sleep_list의 앞부분만 탐색하면 충분하므로 시간 소비가 줄어들겠지만,
+	sleep_list에 원소를 넣을 때 마다 추가적인 시간 소비가 일어나므로 
+	크게 선호할 디자인이라 생각하진 않았다.
+
+---- SYNCHRONIZATION ----
+
+>> A4: How are race conditions avoided when multiple threads call
+>> timer_sleep() simultaneously?
+
+	timer_sleep() 안에서 thread_sleep()가 실행된다. 이 함수는 1) next_
+	wake_up_tick을 결정하며, 2) sleep_list를 수정하고, 3) schedule()
+	함수를 부른다. multiple threads call 이 일어날 때 위 세 경우가 race
+	condition 이므로 인터럽트 on/off를 조절하여 race conditions 를 피하
+	였다.
+
+>> A5: How are race conditions avoided when a timer interrupt occurs
+>> during a call to timer_sleep()?
+
+	thread_sleep()안에서는 인터럽트를 껐다. 따라서 timer_sleep()에서 
+	고려해 볼만한 가능한 race condition은 timer_ticks()수행과 
+	thread_sleep() 콜 사이에 들어오는 timer interrupt 인데, 
+	timer_ticks() 종료와 함께 이미 timer_sleep()이 콜 된 시점의 tick을 
+	알게 되었으므로, 이후에 timer interrupt가 들어와도 문제되지 않는다.
+	(즉, start에는 timer_sleep()이 콜 된 시점의 tick이 온전히 저장된다.)
+
+---- RATIONALE ----
+
+>> A6: Why did you choose this design?  In what ways is it superior to
+>> another design you considered?
+
+	timer interrupt 때 마다 모든 sleep_list를 탐색하면서 깨어날 스래드를 
+	깨우는 방식은 시간 낭비가 심하다. 따라서 현재 깨어날 스레드가 있는지 
+	없는지부터 빨리 알 수 있으면 좋을거라 판단했다. 그럼 리스트를 탐색하는
+	시간을 줄일 수 있다.
+	
+	그러나 솔팅(merge sort)은 비교적 무거운 연산이라 생각하여 사용하지 않았
+	다. 대신, sleep_list에 원소를 넣고 뺄 때마다 가장 빨리 일어날 스레드의
+	일어날 wake_up_tick을 계속 수정하여(이전 wake_up_tick과 단순 비교) 효
+	율을 꾀했다. 
+
+
+			 PRIORITY SCHEDULING
+			 ===================
+
+---- DATA STRUCTURES ----
+
+>> B1: Copy here the declaration of each new or changed `struct' or
+>> `struct' member, global or static variable, `typedef', or
+>> enumeration.  Identify the purpose of each in 25 words or less.
+
+	<<thread.h>>
+	struct thread
+		{
+			int count_donated; // 추가. 스레드가 기부받은 횟수를 카운트.
+			int init_priority; // 추가. 기부받기 전의 우선순위.
+			int lower_priority; // 추가. 
+			struct lock* waiting_lock; // 추가. 스레드가 acquire 기다리
+										  고 있는 록
+			struct list holding_locks; // 추가. 스레드가 쥐고 있는 록들
+		};
+		
+	<<synch.h>>
+	struct lock
+		{
+			struct list_elem elem; // holding_locks list에 lock을 저장
+									  할 때 사용할 list_elem
+		}
+
+>> B2: Explain the data structure used to track priority donation.
+>> Use ASCII art to diagram a nested donation.  (Alternately, submit a
+>> .png file.)
+
+	<<사용하는 데이터 구조들>>
+	int count_donated
+	int init_priority
+	int priority
+	lock* waiting_lock
+	list holding_locks
+	
+	<<설명 및 개략적 알고리즘>>
+	용어 정의: 상위 스레드 --> 내가 기다리고 있는 록을 쥐고 있는 스레드.
+			  하위 스레드 --> 내가 쥐고있는 록을 acquire하길 기다리고 있는 
+			  				 스레드
+	다이어 그램: 			 
+ [Thread Current] --(waiting_lock)--> [Lock A]@--(holding_locks)--[Thread Alpha] --(waiting_lock)--> [Lock D]@--(holding_locks)--[Thread Gamma]
+ [Thread Beta]    --(waiting_lock)--> [Lock B]@--/				  [Thread Theta] --(waiting_lock)--> [Lock E]@--/
+ 									  [Lock C]@-/
+ 
+ 	설명:
+	priority 는 외부적으로 드러나는 우선순위다. 즉, thread를 schedule하거나
+	우선순위 순서대로 어떤 리스트에서 뽑는다는 등의 일을 할 때 이 우선순위를
+	사용한다.
+	 
+	init_priority는 평소엔 priority와 같은 값을 가진다. 그러나 하위	스레드가 
+	우선순위 기부를 했을 때, init_priority는 lock을 release한 후 돌	아갈 우
+	선순위를 저장한다. thread_set_priority()에서 우선순위를 낮추려는 시도를
+	하면 일단 init_priority에 그를 적용하게 된다. priority 자체를 낮추면
+	기부받은 priority를 잃게 되고 CPU에서 나오게될 위험이 있다.
+	
+	waiting_lock을 쓰는 이유는 current thread가 기다리는 록을 잡고 있는 상위
+	스레드의 상위 스레드, 말하자면 할아버지 스레드, 그리고 더 높은 상위 스레드
+	를 추적하여 우선순위를 기부하기 위함이다. (다이어 그램에서 Thread Current,
+	Alpha, Gamma 사이의 관계를 참고하자.)
+	
+	count_donated를 쓰는 이유는 내가 잡고있는 록이 있을지라도 그 록을 기다리
+	면서 나에게 우선순위를 기부한 스레드는 없을 수 있으므로 이를 빠르게 검사하
+	기 위함이다. 아래에서 유용하게 쓰인다. (Thread Alpha에게 Lock C가 그런 
+	존재이다.)
+	
+	holding_locks를 쓰는 이유는 lock_release시에 기부받은 우선순위를 버리고
+	새로운 우선순위를 지정하기 위함이다. 만약 지금 록을 놓았을 때 더 이상 남은
+	하위 록이 없다면(더 기부받을 록들이 없다면, list_empty(holding_locks)가
+	True ) 바로 init_priority로 돌아가면된다. 기부받은적은 있지만 그것이 지
+	금 release할 lock이라도 (count_donated == 1) init_priority로 돌아가면
+	된다. 두 경우 모두 아니라면 남은 holding locks 들 중 가장 priority가 큰 
+	thread의 priority(get_max_priority()함수)를 현재 priority로 지정한다.
+	
+
+---- ALGORITHMS ----
+
+>> B3: How do you ensure that the highest priority thread waiting for
+>> a lock, semaphore, or condition variable wakes up first?
+
+	list waiters 에서 thread를 뽑을 때 가장 priority가 높은 thread를 뽑았
+	다. waiters에 넣을 때는 굳이 priority 순서대로 넣진 않았다. 뽑을 때만 
+	순서가 중요하므로.
+	
+	compare_priority(), compare_priority_cond()를 list_less_func로하여 
+	list_sort()를 한 뒤,	list_pop_front()로 가장 priority가 큰 스레드를 
+	뽑았다. (물론 정확히 말하면 list_elem 포인터를)
+	compare_priority()는 semaphore와 lock을 기다리는 스레드에 한해 사용
+	하였다. 
+	
+	lock이나 semaphore와는 달리, condition variable의 waiters	리스트는 
+	semaphore에 해당하는 리스트 원소를 저장한다. 따라서 compare_priori
+	ty_cond()를 따로 만들었다.
+
+>> B4: Describe the sequence of events when a call to lock_acquire()
+>> causes a priority donation.  How is nested donation handled?
+
+	lock의 holder가 NULL이 아니라는 것은 누군가 이 lock을 소유하고 있다는 
+	것이다. 따라서 현재 스레드는 록을 당장 얻지 못하고 일단 priority를 기
+	부하고 블록되어야한다.
+	
+	단, priority 기부를 하기 전에 일단 priority inversion 상황인지 체크
+	해야한다. 이때 holder의 count_donated(donate받은 횟수를 체크)를 체크
+	해서 0이라면, 즉 아무도 holder에게 기부하지 않은 상황이라면 나중에 
+	holder가 lock을 모두 release	하고 돌아가야할 priority(init_priority)
+	는 holder의 현재 우선순위와 같다. 그렇게 할당해 준다.
+	
+	nested donation 이 handle 되는 방법은 아래와 같다.
+	lock의 holder의 waiting_lock(스레드가 acquire하기 기다리고 있는 록)
+	이 NULL이 아니면, 	holder thread도 어떤 lock을 기다리고 있다는 뜻
+	이므로, 재귀적으로 lock_priority_donation(holder->waiting_lock)을
+	부른다.	(lock_priority_donation은 lock_acquire 안에서 priority 
+	기부를 하는 함수이다.) 즉, 현재 스레드가 holder->waiting_lock에 자신
+	의 priority(이자 holder의 priority)를 기부.
+
+>> B5: Describe the sequence of events when lock_release() is called
+>> on a lock that a higher-priority thread is waiting for.
+
+	B2에서 이미 더 자세하게 설명하였다. 좀 더 넓지만 간략히 설명하면 다음과
+	같다.
+
+	현재 스레드가 쥐고 있는 록들의 리스트인 holding_locks에서 (lock_rele
+	ase()의 인자인) lock을 제거한다.
+	
+	그런 다음, lock_priority_revert() 함수를 통해 현재 스레드의 priority
+	를 재설정한다. 현재 스레드가 록을 하나도 안 가지고 있다면, 스레드의 원
+	래 priority로 돌아가야한다. 현재 스레드의 priority를 낮추는 작업이 락
+	을 쥐고있는 중간에 일어났다면 낮춘 priority	로 돌아간다.	현재 스레드가
+	록을 여러개 가지고 있고, 그 중 한 락을 릴리즈하면 스레드의 우선순위는 
+	남은 락에서 도네이션 받은 우선순위가 되어야한다.
+	
+	그 다음, lock의 holder를 NULL로 바꾸고 sema_up을 통해 락의 새로운 
+	holder를 설정한다. 이때, waiters에서 최우선순위의 스레드를 holder로 
+	설정한다. (sema_up 에서 해당 스레드를 unblock()후 sema->value++를 하
+	고 yield()를 호출하면, 그 스레드가 불렀던 sema_down의 while 문을 빠져
+	나오면서 sema_down의 실행이 종료되고, lock_acquire에서 lock->holder 
+	= curr 로 만든다.)
+
+---- SYNCHRONIZATION ----
+
+>> B6: Describe a potential race in thread_set_priority() and explain
+>> how your implementation avoids it.  Can you use a lock to avoid
+>> this race?
+	
+  추후 수정
+
+---- RATIONALE ----
+
+>> B7: Why did you choose this design?  In what ways is it superior to
+>> another design you considered?
+
+	처음에는 priority donation을 수행하는 함수에 파라미터로 donator, donatee,
+	lock 이 셋을 모두 넣으려고 했다. nested donation 때문이다. 그러나 만약 
+	current thread가 holder에게 donate를 한 뒤에 donation 함수를 다시 사용하
+	여 nested donation을 구현한다면, holder의 priority는 이미 current thread
+	의 priority이므로 donation 함수에 donator, donatee같은 추가 변수를 더 
+	넣지 않아도 됨을 깨닫게 되었다. A -> B, B -> C, C -> D, ... 이렇게 
+	priority를 전달하는 것이 아니라, A -> B,C,D,.. 하는 식으로 전달하면 충분
+	하다. 그래서 코드가 덜 복잡해지게 되었다.
+	
+	또한 이전에는 lock에 int priority라는 변수를 추가하여 waiters list에서
+	가장 큰 priority를 저장하려고 했다. 그럼 lock_release 하면서 current 
+	thread 의 priority를 (priority inversion이 일어나지 않도록) 재설정할 때
+	lock->priority만 비교해서 최대값을 찾아주면 되기 때문이다. 그러나 생각보다
+	lock의 priority를 갱신하는 구현이 상당히 복잡하여 (lock의 sema->waiters
+	가 업데이트 될 때 마다 갱신해야하는데 꽤 복잡한 작업이었다) 그냥 get_max_
+	priority()라는 함수를 따로 만들었다. 이 함수는 holding_locks 리스트를 넣
+	어주면, 각 locks들의 각 waiters 중 가장 큰 priority를 단순하게 탐색한다.
+	
+	count_donated를 쓰는 이유는 내가 잡고있는 록이 있을지라도 그 록을 기다리
+	면서 나에게 우선순위를 기부한 스레드는 없을 수 있으므로 이를 빠르게 검사하
+	기 위함이다. 이 변수를 쓰지 않아도 똑같은 기능을 구현할 수는 있지만, init
+	_priority로 돌아가야할 상황에서도 내가 쥐고 있는 lock의 waiters가 NULL
+	인지 아닌지 확인하여야한다. 또한 명시적으로 변수를 쓰므로써 코드를 이해하
+	기가 좀 더 쉬워진다는 장점이 있다.
+
+			   SURVEY QUESTIONS
+			   ================
+
+Answering these questions is optional, but it will help us improve the
+course in future quarters.  Feel free to tell us anything you
+want--these questions are just to spur your thoughts.  You may also
+choose to respond anonymously in the course evaluations at the end of
+the quarter.
+
+>> In your opinion, was this assignment, or any one of the three problems
+>> in it, too easy or too hard?  Did it take too long or too little time?
+
+>> Did you find that working on a particular part of the assignment gave
+>> you greater insight into some aspect of OS design?
+
+>> Is there some particular fact or hint we should give students in
+>> future quarters to help them solve the problems?  Conversely, did you
+>> find any of our guidance to be misleading?
+
+>> Do you have any suggestions for the TAs to more effectively assist
+>> students, either for future quarters or the remaining projects?
+
+>> Any other comments?
