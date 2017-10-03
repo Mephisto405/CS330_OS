@@ -1,0 +1,328 @@
+			+---------------------------+
+			|		CS 330				|
+			| PROJECT 2: USER PROGRAMS	|
+			| 	   DESIGN DOCUMENT     	|
+			+---------------------------+
+
+---- GROUP ----
+
+>> Fill in the names and email addresses of your group members.
+
+Inyoung Cho <ciy405x@kaist.ac.kr>
+FirstName LastName <email@domain.example>
+FirstName LastName <email@domain.example>
+
+---- PRELIMINARIES ----
+
+>> If you have any preliminary comments on your submission, notes for the
+>> TAs, or extra credit, please give them here.
+
+>> Please cite any offline or online sources you consulted while
+>> preparing your submission, other than the Pintos documentation, course
+>> text, lecture notes, and course staff.
+
+	Team number: 13
+	Project number: 2
+	# of tokens used: 0
+
+	Sources
+	1. Argument passing
+	http://dcclab.sogang.ac.kr/index.php?document_srl=3124&mid=os2014
+	2. Relationship between lib/user/syscall.c and userprog/syscall.c
+	http://bogus919.tistory.com/entry/pintos-project2
+	3. strtok_r & strlcpy
+	http://downman.tistory.com/230
+	http://jybaek.tistory.com/593
+	http://dongz.tistory.com/entry/strtokr-strtok-%EC%B0%A8%EC%9D%B4%EC%A0%90
+	http://blog.naver.com/PostView.nhn?blogId=i1004me2&logNo=140152740726
+	4. CSCI 350: Pintos Guide Written by: Stephen Tsung-Han Sher
+	http://bits.usc.edu/cs350/assignments/Pintos_Guide_2016_11_13.pdf
+	5. Structure and structure pointer
+	https://www.tutorialspoint.com/cprogramming/c_structures.htm
+	6. Pintos project #2 summary
+	http://bogus919.tistory.com/entry/pintos-%EC%9A%94%EC%95%BD-22-User-Program
+	7. Tips for multi-oom test
+	http://thinkpro.tistory.com/119
+	http://leven.tistory.com/entry/%ED%94%84%EB%A1%9C%EC%A0%9D%ED%8A%B8-2-%EB%B0%95%EC%82%B4%EC%99%84%EB%A3%8C
+	
+
+			   ARGUMENT PASSING
+			   ================
+
+---- DATA STRUCTURES ----
+
+>> A1: Copy here the declaration of each new or changed `struct' or
+>> `struct' member, global or static variable, `typedef', or
+>> enumeration.  Identify the purpose of each in 25 words or less.
+
+	????????????????????????	
+	????????????????????????
+	????????????????????????
+
+---- ALGORITHMS ----
+
+>> A2: Briefly describe how you implemented argument parsing.  How do
+>> you arrange for the elements of argv[] to be in the right order?
+>> How do you avoid overflowing the stack page?
+
+	????????????????????????	
+	????????????????????????
+	????????????????????????
+
+---- RATIONALE ----
+
+>> A3: Why does Pintos implement strtok_r() but not strtok()?
+
+	strtok() is unstable in multithreading environments. strtok() uses
+	a static buffer stored in the data segment. Because data segments
+	can contain global variables, variables in the data segments can be
+	accessed from anywhere. In other words, the static buffer used by
+	strtok() is not atomic.
+	The strtok_r() function works the same as strtok(). However, instead
+	of using a static buffer, we use a char* type variable that is 
+	passed as a parameter.
+
+>> A4: In Pintos, the kernel separates commands into a executable name
+>> and arguments.  In Unix-like systems, the shell does this
+>> separation.  Identify at least two advantages of the Unix approach.
+
+	1. If any error occurs when separating commands by shell, it is a 
+	problem of shell, not the kernel. That is, the problem only affects
+	the shell, not the kernel.
+	2. We can make the kernel smaller and faster.
+	
+
+			     SYSTEM CALLS
+			     ============
+
+---- DATA STRUCTURES ----
+
+>> B1: Copy here the declaration of each new or changed `struct' or
+>> `struct' member, global or static variable, `typedef', or
+>> enumeration.  Identify the purpose of each in 25 words or less.
+
+	in threads/thread.h
+	
+		struct thread (edited structure)
+
+			struct list file_fd_list;
+			==> list of file_fd_pair, which stores file and its 
+				corresponding file descriptor.
+			int exit_stat_code;
+			==> stores the argument int status of syscall_exit()
+			struct list child_info_list;
+			==> when parent threads wait its child, it needs some of 
+				informations of the child.
+			struct thread* parent;
+			==> for communicating between child and its parent. similar 
+				reason of child_info_list.
+			int fd_max;
+			==> To assign a unique file descriptor to each opened file.
+			struct semaphore exec_return_sema;
+			==> Parent process can't return from syscall_exec() until it
+				holds this semaphore.
+			bool child_load_success;
+			==> Parent process can know whether the child process 
+				successfully loaded its executable by checking this bool 
+				variables.
+			struct file* executable;
+			==> If the (child) process has successfully loaded its 		
+				executable file, this special pointer points to that 
+				file.
+		
+		struct child_info (new structure)
+		==> Only pieces of information necessary for syscall_wait or 
+			syscall_exit are stored in child_info_list.
+			
+			tid_t tid;
+			==> tid of child thread.
+			bool is_exited;
+			==> whether the child thread is exited or not.
+			int exit_stat_cod;
+			==> stores the argument int status of syscall_exit(). The
+				parent thread will receive this information.
+			struct semaphore sema;
+			==> If the parent calls wait, then the parent process wait 
+				until the child is exited and sema_up(sema).
+			struct list_elem elem;
+			==> used by child_info_list
+			
+		struct file_fd_pair (new structure)
+		==> When implementing functions in syscall.c, we needed to find 
+			file with fd. Therefore, a link between the two is necessary.
+			
+			struct file* file;
+			int fd;
+			struct list_elem elem;
+			==> used by fild_fd_list
+			
+	in userprog/syscall.h
+	
+		struct lock filelock;
+		==> lock for file system. Only one process can use file system.
+
+>> B2: Describe how file descriptors are associated with open files.
+>> Are file descriptors unique within the entire OS or just within a
+>> single process?
+
+	As we explained above, each process has own list of file_fd_pair 
+	which keep tracks each file and its fd.
+	Because each process(thread) has its own fd_max variable, file 	
+	descriptors are unique just within a single process. 
+	
+
+---- ALGORITHMS ----
+
+>> B3: Describe your code for reading and writing user data from the
+>> kernel.
+
+	syscall_handler() extracts syscall_read and syscall_write parameters 
+	from the stack frame. Check all exceptional conditions before 
+	passing them to each function as parameters. (Such as an invalid 
+	pointer)
+
+	When reading or writing to syscall_read or write to file, use lock 
+	to synchronize. If fd is 0 or 1, syscall_read uses input_getc () 
+	repeatedly, and syscall_write uses putbuf (), repectively. Otherwise,
+	use file_read() and file_write(), respectively.
+
+>> B4: Suppose a system call causes a full page (4,096 bytes) of data
+>> to be copied from user space into the kernel.  What is the least
+>> and the greatest possible number of inspections of the page table
+>> (e.g. calls to pagedir_get_page()) that might result?  What about
+>> for a system call that only copies 2 bytes of data?  Is there room
+>> for improvement in these numbers, and how much?
+
+	????????????????????????	
+	????????????????????????
+	????????????????????????
+
+>> B5: Briefly describe your implementation of the "wait" system call
+>> and how it interacts with process termination.
+
+	Retrieves a child_info with a tid that matches the tid of the child 
+	that needs to wait, while walking around child_info_list.
+	Then check is_exited and call sema_down() if the child is not 		
+	already terminated. Since child calls sema_up() in process_exit () 
+	when the child exits, the parent process can wait until the child 
+	terminates. 
+	
+	It then free() the child and returns the exit_stat_code of the 
+	child. If there is no child that matches tid at first, it just 
+	returns -1.
+
+>> B6: Any access to user program memory at a user-specified address
+>> can fail due to a bad pointer value.  Such accesses must cause the
+>> process to be terminated.  System calls are fraught with such
+>> accesses, e.g. a "write" system call requires reading the system
+>> call number from the user stack, then each of the call's three
+>> arguments, then an arbitrary amount of user memory, and any of
+>> these can fail at any point.  This poses a design and
+>> error-handling problem: how do you best avoid obscuring the primary
+>> function of code in a morass of error-handling?  Furthermore, when
+>> an error is detected, how do you ensure that all temporarily
+>> allocated resources (locks, buffers, etc.) are freed?  In a few
+>> paragraphs, describe the strategy or strategies you adopted for
+>> managing these issues.  Give an example.
+
+	All pointers are checked whether they are less than 0xc0000000 (ie, 
+	they are in range of user virtual memory). If it is outside this 
+	range, call syscall_exit (-1).
+
+	Even within this range, unmapped pointers can cause page faults. So 
+	modify the code in exception.c and call syscall_exit (-1) to 
+	terminate the process when this problem occurs.
+
+	syscall_exit () internally calls thread_exit (). This function frees 
+	all allocated resources (filelock, file pointers, file_fd_list, 
+	executable, page directory).
+	
+	For example, in the bad-jump and bad-jump2 tests, they each use a 
+	null pointer and a pointer to 0xc0000000. 0xc0000000 is not in the 
+	range of user virtual memory, and since null pointer is also an 
+	unmapped pointer, each error handling routine calls syscall_exit ().
+
+---- SYNCHRONIZATION ----
+
+>> B7: The "exec" system call returns -1 if loading the new executable
+>> fails, so it cannot return before the new executable has completed
+>> loading.  How does your code ensure this?  How is the load
+>> success/failure status passed back to the thread that calls "exec"?
+
+	I could not use pointers proficiently, so it was hard to imagine how 
+	to simply pass load status by only using parameters. Instead, we 
+	created a variable named child_load_success in the thread structure.
+
+	If load fails, success is false in load () function, or something 
+	goes wrong at process_execute () (for example, thread_create (), 
+	tid_allocate () is not possible). In this case, assign 
+	child_load_success as 'false'. 
+	
+	Intuitively, when the load succeeds, it is when the 'success' of the 
+	load () function is 'true'. In this case, child_load_success is 
+	'true'. The 'exec' system call checks this boolean value to 
+	determine whether to return -1.
+
+>> B8: Consider parent process P with child process C.  How do you
+>> ensure proper synchronization and avoid race conditions when P
+>> calls wait(C) before C exits?  After C exits?  How do you ensure
+>> that all resources are freed in each case?  How about when P
+>> terminates without waiting, before C exits?  After C exits?  Are
+>> there any special cases?
+
+	????????????????????????	
+	????????????????????????
+	????????????????????????
+	
+---- RATIONALE ----
+
+>> B9: Why did you choose to implement access to user memory from the
+>> kernel in the way that you did?
+
+	We check the null pointer and out-of-range(>= 0xc0000000) pointers 
+	first because they can be checked simply, and the unmapped pointer 
+	causes a page fault, so we handle it in exception.c. The process of 
+	validating an unmapped pointer is little bit slower, so we used a 
+	page fault.
+
+>> B10: What advantages or disadvantages can you see to your design
+>> for file descriptors?
+
+	It is very simple because it simply assigns fd to each file while 
+	just increasing fd_max.
+	
+	We have implemented the mapping between fd and file using structs 	
+	and lists. Since fd is an integer, we expect it to be more efficient 
+	for searching file by fd if we use a structure such as file pointer 
+	list or hashmap(like Java).
+	
+	file pointer list F: F[fd value] = file pointer of some file
+
+>> B11: The default tid_t to pid_t mapping is the identity mapping.
+>> If you changed it, what advantages are there to your approach?
+
+	We didn't change it. It's reasonable enough.
+
+			   SURVEY QUESTIONS
+			   ================
+
+Answering these questions is optional, but it will help us improve the
+course in future quarters.  Feel free to tell us anything you
+want--these questions are just to spur your thoughts.  You may also
+choose to respond anonymously in the course evaluations at the end of
+the quarter.
+
+>> In your opinion, was this assignment, or any one of the three problems
+>> in it, too easy or too hard?  Did it take too long or too little time?
+
+>> Did you find that working on a particular part of the assignment gave
+>> you greater insight into some aspect of OS design?
+
+>> Is there some particular fact or hint we should give students in
+>> future quarters to help them solve the problems?  Conversely, did you
+>> find any of our guidance to be misleading?
+
+>> Do you have any suggestions for the TAs to more effectively assist
+>> students, either for future quarters or the remaining projects?
+
+>> Any other comments?
