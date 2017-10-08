@@ -8,7 +8,7 @@
 #include "threads/interrupt.h"
 #include "threads/intr-stubs.h"
 #include "threads/palloc.h"
-#include "threads/malloc.h" // edit_wait end
+#include "threads/malloc.h"
 #include "threads/switch.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
@@ -172,7 +172,7 @@ thread_create (const char *name, int priority,
   struct switch_entry_frame *ef;
   struct switch_threads_frame *sf;
   tid_t tid;
-  struct child_info* child; // edit_wait
+  struct child_info* child;
 
   ASSERT (function != NULL);
 
@@ -185,7 +185,6 @@ thread_create (const char *name, int priority,
   init_thread (t, name, priority);
   tid = t->tid = allocate_tid ();
 
-  // edit_wait
   /* Initialize child informations */
 #ifdef USERPROG
   child = (struct child_info*)malloc(sizeof(struct child_info));
@@ -195,7 +194,6 @@ thread_create (const char *name, int priority,
   list_push_back(&thread_current()->child_info_list, &child->elem);
   sema_init(&child->sema,0);
 #endif
-  // end
 
   /* Stack frame for kernel_thread(). */
   kf = alloc_frame (t, sizeof *kf);
@@ -296,7 +294,7 @@ thread_exit (void)
   ASSERT (!intr_context ());
 
   if( filelock.holder == thread_current() ){
-    filelock_release(); // edit_rox
+    filelock_release();
   }
 
 #ifdef USERPROG
@@ -461,17 +459,13 @@ init_thread (struct thread *t, const char *name, int priority)
   t->priority = priority;
   t->magic = THREAD_MAGIC;
 
-  // edit_ap1
 #ifdef USERPROG
   list_init( &t->file_fd_list );
-  // end
-  // edit_wait
   t->exit_stat_code = -1;
   list_init( &t->child_info_list );
   t->fd_max = 2;
-  sema_init( &t->exec_return_sema, 0 );  // edit_exec end
+  sema_init( &t->exec_return_sema, 0 );
   t->child_load_success = false;
-  // end
 #endif
 }
 

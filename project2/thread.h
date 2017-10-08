@@ -4,11 +4,9 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
-//edit_ap1
 #include "filesys/file.h"
 #include "filesys/filesys.h"
 #include "threads/synch.h"
-//end
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -93,7 +91,7 @@ struct thread
     char name[16];                      /* Name (for debugging purposes). */
     uint8_t *stack;                     /* Saved stack pointer. */
     int priority;                       /* Priority. */
-    struct list file_fd_list; //edit_ap1 end
+    struct list file_fd_list;           /* List of file and fd pair. */
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
@@ -101,44 +99,37 @@ struct thread
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
-    // edit_wait
-    int exit_stat_code;
-    struct list child_info_list;
-    struct thread* parent;
-    int fd_max;
-    // edit_exec
+    int exit_stat_code;                 /* Store exit status. */
+    struct list child_info_list;        /* List of child_info structure. */
+    struct thread* parent;              /* Pointing parent. */
+    int fd_max;                         /* To assign new fd value */
     struct semaphore exec_return_sema;  /* for return in syscall_exec() */
-    bool child_load_success;
-    // edit_rox
-    struct file* executable;
-    // end
-    // end
-    // end
+    bool child_load_success;            /* Whether loading is successful. */
+    struct file* executable;            /* Executable file. */
 #endif
 
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
   };
 
-//edit_wait
+/* Do not need to store all information of child in child list.
+ * We only need a subset of those information */
 struct child_info{
-  tid_t tid;
-  bool is_exited;
-  int exit_stat_code;
-  struct semaphore sema;
-  struct list_elem elem;
+  tid_t tid;                            /* Thread id. */
+  bool is_exited;                       /* Whether the child is exited. */
+  int exit_stat_code;                   /* Store child's exit status. */
+  struct semaphore sema;                /* Semaphore for waiting child */
+  struct list_elem elem;                /* List element. */
 };
-//end
 
-
-// edit_ap1
+/* Mapping between file pointer and fd value. */
 struct file_fd_pair
 {
-  struct file* file;
-  int fd;
-  struct list_elem elem;
+  struct file* file;                  /* File pointer. */
+  int fd;                             /* File descriptor. */
+  struct list_elem elem;              /* List element. */
 };
-// end
+
 
 
 /* If false (default), use round-robin scheduler.

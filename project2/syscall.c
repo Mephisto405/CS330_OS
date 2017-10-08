@@ -3,7 +3,6 @@
 #include <syscall-nr.h>
 #include "threads/interrupt.h"
 #include "threads/thread.h"
-// edit_ap1
 #include <user/syscall.h>
 #include "userprog/process.h"
 #include "filesys/file.h"
@@ -12,10 +11,9 @@
 #include "threads/synch.h"
 #include "threads/vaddr.h"
 #include "threads/malloc.h"
-#define VERBOSE 0
-// end
+
 static void syscall_handler (struct intr_frame *);
-// edit_ap1
+
 /* System calls */
 static void syscall_halt(void);
 static int syscall_wait(pid_t pid);
@@ -30,33 +28,21 @@ static void syscall_seek(int fd, unsigned position);
 static unsigned syscall_tell(int fd);
 static void syscall_close(int fd);
 /* Utilities */
-static struct file* fd2file ( int fd );
-static void ffdlist_remove( int fd );
-static int ffdlist_push( struct file* file );
-static bool is_valid_uservaddr ( void* ptr);
-//static void filelock_acquire(void);
-//static void filelock_release(void);
-
-// static struct lock filelock;
-// end
+static struct file* fd2file ( int fd );   /* Convert fd to file pointer.  */
+static void ffdlist_remove( int fd );        /* Remove from file_fd_list. */
+static int ffdlist_push( struct file* file );/* Insert into file_fd_list. */
+static bool is_valid_uservaddr( void* ptr);/* Check the pointer is valid. */
 
 void
 syscall_init (void) 
 {
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
-  // edit_ap1
   lock_init (&filelock);
-  // end
 }
 
 static void
 syscall_handler (struct intr_frame *f UNUSED) 
 {
-  // edit_ap1
-  if(VERBOSE)
-    printf ("system call!\n");
-  //thread_exit ();
-
   /* interrupt frame's argument stack */
   if (!is_valid_uservaddr(f->esp)){
     syscall_exit(-1);
@@ -79,8 +65,6 @@ syscall_handler (struct intr_frame *f UNUSED)
   /* main handler */
   switch(syscall_code){
     case SYS_EXEC:
-      if(VERBOSE)
-        printf("case sys exec\n");
       if( arg1 == NULL || !is_valid_uservaddr(arg1) )
         syscall_exit(-1);
       cmd_line = *(char **) arg1;
@@ -90,14 +74,10 @@ syscall_handler (struct intr_frame *f UNUSED)
       break;
 
     case SYS_HALT:
-      if(VERBOSE)
-        printf("case sys halt\n");
       syscall_halt();
       break;
 
     case SYS_EXIT:
-      if(VERBOSE)
-        printf("case sys exit\n");
       if (!is_valid_uservaddr(arg1))
         syscall_exit(-1);
       status = *(int *)arg1;
@@ -105,8 +85,6 @@ syscall_handler (struct intr_frame *f UNUSED)
       break;
     
     case SYS_WAIT:
-      if(VERBOSE)
-        printf("case sys wait\n");
       if (!is_valid_uservaddr(arg1))
         syscall_exit(-1);
       pid = *(pid_t *) arg1;
@@ -114,8 +92,6 @@ syscall_handler (struct intr_frame *f UNUSED)
       break;
     
     case SYS_CREATE:
-      if(VERBOSE)
-        printf("case sys create\n");
       if(arg1 == NULL || !is_valid_uservaddr(arg1) || !is_valid_uservaddr(arg2))
         syscall_exit(-1);
       file = *(char **) arg1;
@@ -126,8 +102,6 @@ syscall_handler (struct intr_frame *f UNUSED)
       break;
 
     case SYS_REMOVE:
-      if(VERBOSE)
-        printf("case sys remove\n");
       if(arg1 == NULL || !is_valid_uservaddr(arg1))
         syscall_exit(-1);
       file = *(char **) arg1;
@@ -137,8 +111,6 @@ syscall_handler (struct intr_frame *f UNUSED)
       break;
   
     case SYS_OPEN:
-      if(VERBOSE)
-        printf("case sys open\n");
       if(arg1 == NULL || !is_valid_uservaddr(arg1))
         syscall_exit(-1);
       file = *(char **) arg1;
@@ -148,8 +120,6 @@ syscall_handler (struct intr_frame *f UNUSED)
       break;
 
     case SYS_FILESIZE:
-      if(VERBOSE)
-        printf("case sys filesize\n");
       if(arg1 == NULL || !is_valid_uservaddr(arg1))
         syscall_exit(-1);
       fd = *(int *) arg1;
@@ -157,8 +127,6 @@ syscall_handler (struct intr_frame *f UNUSED)
       break;
 
     case SYS_READ:
-      if(VERBOSE)
-        printf("case sys read\n");
       if(arg1 == NULL || !is_valid_uservaddr(arg1) 
           || arg2 == NULL || !is_valid_uservaddr(arg2)
           || arg3 == NULL || !is_valid_uservaddr(arg3))
@@ -170,8 +138,6 @@ syscall_handler (struct intr_frame *f UNUSED)
       break;
 
     case SYS_WRITE:
-      if(VERBOSE)
-        printf("case sys write\n");
       if (!is_valid_uservaddr(arg3))
         syscall_exit(-1);
       fd = *(int *) arg1;
@@ -181,8 +147,6 @@ syscall_handler (struct intr_frame *f UNUSED)
       break;
 
     case SYS_SEEK:
-      if(VERBOSE)
-        printf("case sys seek\n");
       if(arg1 == NULL || !is_valid_uservaddr(arg1)
           || arg2 == NULL || !is_valid_uservaddr(arg2))
         syscall_exit(-1);
@@ -192,8 +156,6 @@ syscall_handler (struct intr_frame *f UNUSED)
       break;
 
     case SYS_TELL:
-      if(VERBOSE)
-        printf("case sys tell\n");
       if(arg1 == NULL || !is_valid_uservaddr(arg1))
         syscall_exit(-1);
       fd = *(int *) arg1;
@@ -201,24 +163,23 @@ syscall_handler (struct intr_frame *f UNUSED)
       break;
 
     case SYS_CLOSE:
-      if(VERBOSE)
-        printf("case sys close\n");
       if(arg1 == NULL || !is_valid_uservaddr(arg1))
         syscall_exit(-1);
       fd = *(int *) arg1;
       syscall_close(fd);
       break;
   }
-  // end
 }
 
-// edit_ap1
-// edit_halt
+//#################################################################
+//#################################################################
+//    System call functions
+//#################################################################
+//#################################################################
 static void
 syscall_halt(void){
   power_off();
 }
-// end
 
 static pid_t syscall_exec( const char* cmd_line ){
   pid_t pid;
@@ -237,8 +198,7 @@ syscall_exit ( int status ){
 
   printf("%s: exit(%d)\n", name, status);
   
-  //test curr->exit_status = status;
-  curr->exit_stat_code = status;  //edit_wait end
+  curr->exit_stat_code = status; 
 
   thread_exit();
 }
@@ -255,9 +215,6 @@ syscall_create( const char *file, unsigned initial_size ){
   filelock_acquire();
   success = filesys_create( file, initial_size );
   filelock_release();
- 
-  if(VERBOSE)
-    printf("success: %d\n", success);
 
   return success;
 }
@@ -270,9 +227,6 @@ syscall_remove( const char *file ){
   success = filesys_remove( file );
   filelock_release();
 
-  if(VERBOSE)
-    printf("success: %d\n", success);
-
   return success;
 }
 
@@ -283,16 +237,17 @@ syscall_open( const char* file ){
 
   filelock_acquire();
   f = filesys_open(file);
+  filelock_release();
+
   if( f == NULL ){
-    filelock_release();
     return -1;
   }
-  else{ // push into file_fd_list of current thread
+  else{
+    filelock_acquire();
     fd = ffdlist_push(f);
     filelock_release();
-    return fd;
   }
-  // Not reached
+  return fd;
 }
 
 static int
@@ -326,7 +281,7 @@ syscall_read( int fd, void* buffer, unsigned size ){
     for( i == 0 ; i < size ; i++ ){
       tmp = input_getc();
       *((uint8_t *)buffer + i) = tmp;
-      if( tmp == 0 ) // NULL
+      if( tmp == 0 )
         break;
     }
     return i;
@@ -410,8 +365,10 @@ syscall_close( int fd ){
 }
 
 //###########################################################
-//  Utilities for manipulating filelock, file_fd_list, 
-//  file_fd_pair, etc.
+//###########################################################
+//    Utilities for manipulating filelock, file_fd_list, 
+//    file_fd_pair, etc.
+//###########################################################
 //###########################################################
 static void
 ffdlist_remove( int fd ){
@@ -450,7 +407,7 @@ ffdlist_push( struct file* file ){
 
 static struct file*
 fd2file( int fd ){
-  //ASSERT(fd >= 2); // for debug
+  
   if( fd < 2 )
     return NULL;
   
@@ -475,14 +432,6 @@ fd2file( int fd ){
 
 static bool 
 is_valid_uservaddr(void* ptr){
-  /*
-  if( ptr >= 0x08048000 && pagedir_get_page(thread_current()->pagedir) != NULL){
-    return true;
-  }
-  return false;
-  */
-  //if(VERBOSE)
-    //printf("valid?: %x\n", ptr); 
   return is_user_vaddr( ptr );
 }
 
@@ -494,4 +443,3 @@ void
 filelock_release(void){
   lock_release(&filelock);
 }
-// end

@@ -15,16 +15,13 @@
 #include "threads/init.h"
 #include "threads/interrupt.h"
 #include "threads/palloc.h"
-#include "threads/malloc.h"// edit_wait end
-#include "userprog/syscall.h" // edit_rox end
+#include "threads/malloc.h"
+#include "userprog/syscall.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 
-#define VERBOSE 0
-
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
-int next_fd = 3; // initialize the file descriptors to 3 
 
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
@@ -33,9 +30,8 @@ int next_fd = 3; // initialize the file descriptors to 3
 tid_t
 process_execute (const char *file_name) 
 {
-  //printf("file_name argument: %s \n", file_name);
-  char *fn_copy, *exec_name;//, *exec_copy; edit_oom end
-  char exec_copy[16]; // edit_oom end
+  char *fn_copy, *exec_name;
+  char exec_copy[16];
   tid_t tid;
   char *saveptr;
   struct thread* curr;
@@ -50,25 +46,18 @@ process_execute (const char *file_name)
   strlcpy (fn_copy, file_name, PGSIZE);
   
   // only need the file_name, no args
-  if(VERBOSE) printf("strtok start\n");
   exec_name = strtok_r(fn_copy, " ", &saveptr);
-  // printf("exec_name: %s\n", exec_name);
-  if(VERBOSE) printf("strtok done\n");
   
-  /*exec_copy = palloc_get_page(0);
-  if(exec_copy == NULL)
-    return TID_ERROR; */ // edit_oom end
   strlcpy(exec_copy, exec_name, PGSIZE);
   strlcpy( fn_copy, file_name, PGSIZE);
   /* Create a new thread to execute FILE_NAME. */
   
-  // printf("exec_name: %s, fn_copy: %s\n", exec_copy, fn_copy);
-  tid = thread_create (exec_copy, PRI_DEFAULT, start_process, fn_copy);// debug
-  
+  tid = thread_create (exec_copy, PRI_DEFAULT, start_process, fn_copy);
+
   curr = thread_current();
   if (tid == TID_ERROR){
     palloc_free_page (fn_copy);
-    palloc_free_page(exec_copy); // edit_sync-write end
+    palloc_free_page(exec_copy);
     curr->child_load_success = false;
     sema_up(&curr->exec_return_sema);
   }
@@ -91,9 +80,9 @@ start_process (void *f_name)
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
-  if(VERBOSE) printf("before load\n");
+  
   success = load (file_name, &if_.eip, &if_.esp);
-  if(VERBOSE) printf("after load\n");
+  
   /* If load failed, quit. */
   palloc_free_page (file_name);
   curr = thread_current();
@@ -128,19 +117,10 @@ start_process (void *f_name)
 int
 process_wait (tid_t child_tid) 
 {
-  /*
-  while (true) {
-    thread_yield();
-  };
-  */
-  
-  // edit_wait
-  // child_info_list, child_info is unique for each thread.
-  // Therefore, synch is not needed.
   struct list_elem* e;
   struct thread* curr;
   struct child_info* child;
-  int exit_stat_code = -1;
+  int exit_stat_code;
 
   curr = thread_current();
 
@@ -150,18 +130,23 @@ process_wait (tid_t child_tid)
   {
     child = list_entry(e, struct child_info, elem);
     if( child->tid == child_tid ){
-      if( child->is_exited == false ){
-         sema_down(&child->sema);
-      }
-      exit_stat_code = child->exit_stat_code;
-      list_remove(e);
-      free(child);
-      break; // no more child with tid= child_tid. tid is unique.
+      break; 
     }
   }
 
+  if ( child == NULL || e == list_end(&curr->child_info_list) ){
+    exit_stat_code = -1;
+  }
+  else{
+    if( child->is_exited == false ){
+      sema_down(&child->sema);
+    }
+    list_remove(e);
+    exit_stat_code = child->exit_stat_code;
+    free(child);
+  }
+
   return exit_stat_code;
-  // end
 }
 
 /* Free the current process's resources. */
@@ -170,35 +155,31 @@ process_exit (void)
 {
   struct thread *curr = thread_current ();
   uint32_t *pd;
-
-  // edit_wait
   struct list_elem* e;
   struct child_info* my_info;
-  // edit_rox
   struct file_fd_pair* ffd_pair;
 
+  filelock_acquire();
+
+  if(curr->executable != NULL){
+    file_close(curr->executable);
+  }
   if(!list_empty(&curr->file_fd_list)){
     e = list_front(&curr->file_fd_list);
     while( e != list_end(&curr->file_fd_list) ){
       ffd_pair = list_entry(e, struct file_fd_pair, elem);
-      if( ffd_pair->file != NULL ){
-        filelock_acquire();
-        //printf("process_exit: file close\n"); // edit-oom end
-        file_close( ffd_pair->file );
-        filelock_release();
-      }
       e = list_remove(e);
+      if( ffd_pair->file != NULL ){
+        file_close( ffd_pair->file );
+      }
       free( ffd_pair );
     }
-  }
-  // is this lines needed?
+  }  
   
-  filelock_acquire();
-  file_close(curr->executable);
   filelock_release();
   
-  //end
-  
+
+  ASSERT(&curr->parent->child_info_list != NULL);
   for( e = list_begin(&curr->parent->child_info_list);
       e != list_end(&curr->parent->child_info_list);
       e = list_next(e))
@@ -207,11 +188,10 @@ process_exit (void)
     if( my_info->tid == curr->tid ){
       my_info->is_exited = true;
       my_info->exit_stat_code = curr->exit_stat_code;
-      sema_up(&my_info->sema);
       break;
     }
   }
-  // end
+
   
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
@@ -229,6 +209,10 @@ process_exit (void)
       pagedir_activate (NULL);
       pagedir_destroy (pd);
     }
+
+  if( my_info->tid == curr->tid ){
+    sema_up(&my_info->sema);
+  }
 }
 
 /* Sets up the CPU for running user code in the current
@@ -342,7 +326,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
   // copy file_name into args to pass to setup_stack
   args = palloc_get_page (0);
   if (args == NULL)
-    goto done; //edit_sync-write end
+    goto done;
   strlcpy (args, file_name, PGSIZE);
 
   //extract just the file name
@@ -356,7 +340,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
       goto done; 
     }
 
-  file_deny_write(file); // edit_rox end
+  file_deny_write(file);
 
   /* Read and verify executable header. */
   if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
@@ -441,15 +425,13 @@ load (const char *file_name, void (**eip) (void), void **esp)
 
  done:
   /* We arrive here whether the load is successful or not. */
-  palloc_free_page(args); // edit_sync-write end
-  // edit_rox
+  palloc_free_page(args);
   if( success ){
     t->executable = file;
   }
   else{
     file_close(file);
   }
-  // end
   return success;
 }
 
@@ -564,7 +546,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 /* Create a minimal stack by mapping a zeroed page at the top of
    user virtual memory. */
 static bool
-setup_stack (void **esp, char * file_name, char * args) 
+setup_stack (void **esp, char * file_name UNUSED, char * args) 
 {
   uint8_t *kpage;
   bool success = false;
@@ -632,14 +614,11 @@ setup_stack (void **esp, char * file_name, char * args)
         *esp = *esp - sizeof(void*);
         memset(*esp, 0, sizeof(void *));
 
-        //hex_dump(16, *esp, 64, 1);
-
         free(args_array);
       }
       else
         palloc_free_page (kpage);
     }
-  // hex_dump(16, *esp, 96, true);  // debug
   return success;
 }
 
