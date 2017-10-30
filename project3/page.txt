@@ -1,0 +1,83 @@
+===page===
+<<page.h>>
+struct page{
+	virtual uaddr	// find physical address with pagedir_get_page
+					// user address = virtual, kernel address = physical ?
+	loaded // 이걸로 load file할지 말지 결정. mmfile 구현에 필요할 듯. 다른 땐?
+	swapped_out // swap or not
+	size_t swap_index
+	struct file *file, off_t ofs, uint8_t *upage,
+uint32_t read_bytes, bool writable // mmfile 구현에 필요할 듯
+	hash_elem elem;
+}
+
+<<page.c>>
+/* 이 함수들의 목표: 사용자는 해쉬.c를 안 써도 되도록 짠다	*/
+static hash_hash_func page_hash_func
+static hash_less_func page_less_func
+static hash_action_func page_destruct_func
+
+static hash_map page_table // for each thread
+
+page_init(struct hash* page_table){
+	return hash_init(page_table, page_hash_func, page_less_func, NULL);
+}
+
+page_insert(struct hash *page_table, struct page* page){		// page는 꼭 말록으로 만들자
+	page_table(useraddress, page)
+}
+
+page_insert_raw_page(void* addr){
+	struct page* tmp = (struct page*) malloc(sizeof(struct page));
+	struct hash_elem* e;
+	
+	tmp->uaddr = addr;
+	tmp->swapped_out = false;
+	
+	e = hash_insert(&thread_current()->page_table, &tmp->hash_elem);
+	// 이 루틴 필요없게 만들 수도
+	if(e != NULL){
+		free(tmp); 			// already exists such page, so let's free tmp
+		return hash_entry(e, struct page, hash_elem);
+	}
+	return NULL;
+}
+
+page_delete(struct hash *page_table, struct page* page){
+	hash_delete (page_table, &page->hash_elem);
+	free(page);
+}
+
+page_get_page(struct hash *page_table, void* uaddr){
+	round_down(useraddr)
+}
+
+page_load_swap?
+
+page_load_file 	// 아직 안짜도 됨
+
+page_load_zero?
+
+page_destory(struct hash *page_table){
+	hash_destory(page_table, page_destruct_func);
+}
+
+page_destruct_func(struct hash_elem *e, void *aux UNUSED){
+	struct page* page = hash_entry(e, struct page, hash_elem);
+	swap에 있으면 삭제(swap_destory)
+	if(kpage = pagedir_get_page(~) != NULL) 
+		pagedir_clear_page(currentthread->pagedir, page->uaddr);
+		frame_free(kpage)
+	free(page)
+}
+
+===process===
+<<process.c>>
+load_segment{
+	while 문을 돌면서 page_allocate
+	즉, 한 번 반복마다 page_read_bytes = PGSIZE or read_bytes(when read_bytes< PGSIZE)
+	page_zero_bytes = PGSIZE - page_read_bytes
+	page = malloc
+	page 의 데이터에 segment의 조각(PGSIZE 만한)의 데이터 할당(loaded~ file_writable)
+	이때 offset 변경하면서(PGSIZE씩 증가) 할당
+}

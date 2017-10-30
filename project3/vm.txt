@@ -1,0 +1,12 @@
+void vm_init(){
+	page_init()
+	frame_init()
+	swap_init()
+}
+
+/* threads/init.c */
+
+#ifdef VM
+  vm_init();
+#endif
+printf ("Boot complete.\n");

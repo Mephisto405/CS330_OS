@@ -1,0 +1,76 @@
+===frame===
+<<frame.h>>
+struct frame{
+	struct thread *holder
+	void *kpage
+	void *upage
+	struct list_elem elem;
+}
+
+<<frame.c>>
+static struct list frame_table; 		// hash_map으로 구현하고 싶지만 그럼 eviction을 구현하기 힘들다
+static lock frame_lock;
+
+frame_init{
+	list_init(&frame_table)
+}
+
+frame_free(void* kpage){
+	frame_table 에서 kpage에 해당하는 frame 찾는다.
+	(for (e = list_begin(&frame_table); e != list_end(&frame_table); e = list_next(e))
+		frame = list_entry(e, struct frame, elem)
+	)
+	frame_table 에서 그 frame 제거
+	frame->kpage palloc_free_page			// frame_get 에서 palloc_get_page를 쓰므로
+	free(frame)
+}
+
+frame_get(void* upage, enum palloc_flags flags){
+	page = palloc_get_page(PAL_USER | flags)
+	if(page == NULL)
+		page = frame_evict_and_get(flags);
+	
+	if(page != NULL)
+		frame = malloc
+		frame->holder = thread_current()
+		frame->upage = upage
+		frame->kpage = page
+		frame_table 에 삽입 (list_push_back)
+	return page;	// page == NULL 이면 swap 슬롯이 꽉 찼다는 이야기고 아마 커널 패닉?
+}
+
+frame_evict_and_get(flags){
+	frame = select_frame_to_evict(frame_table);
+	if( !pagedir_is_dirty(~) )
+		// no-op (refer to 1st paragraph of 4.3.2 paging
+	else
+		page = page_get_page(&frame->holder->page_table, frame->upage);
+		page->valid = false;
+		page->swap_idx = swap_out(frame->kpage);
+	frame_table 에서 frame 제거
+	pagedir_clear_page(frame->holder->pagedir, frame->upage)
+	palloc_free_page(frame->kpage);
+	free(frame)
+	
+	return palloc_get_page(PAL_USER | flags);
+}
+
+frame* select_frame_to_evict(){
+	for ( e = list_begin(&frame_table); ~~~ ){
+		frame = list_entry(e, struct frame, elem);
+		if( !pagedir_is_accessed(frame->holder->pagedir, frame->upage) )			
+			return frame;
+		else
+			pagedir_set_accessed(frame->holder->pagedir, frame->upage, false);
+	}
+	return select_to_evict();  // circular list. 여기서는 무조건 한 회전안에 리턴문을 만난다.
+}
+
+frame_acquire(void)
+	lock_acquire(&frame_lock);
+	
+frame_release(void)
+	lock_release(&frame_lock);
+
+frame_hash_func	// kpage 기준으로 해쉬 테이블 작성
+frame_less_func

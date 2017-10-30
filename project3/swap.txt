@@ -1,0 +1,60 @@
+===swap===
+<<swap.h>>
+size_t swap_out(void* kpage);						// return swap_index
+void swap_init(void);
+void swap_in(struct page* page, void* kpage);
+void swap_destory(size_t swap_index);
+
+<<swap.c>>
+static swap_lock
+static struct bitmap* swap_map
+static disk_sector_t stride DISK_SECTOR_SIZE / PGSIZE;
+
+swap_init{
+	lock_init
+	swap_disk = disk_get(1,1)
+	swap_map = bitmap_create(stride * disk_size(swap_disk));
+}
+
+size_t swap_out(void* kpage){
+	disk_sector_t i;
+	swap_disk = disk_get(1,1)
+	
+	lock_acquire(&swap_lock)
+	swap_index = bitmap_scan_and_flip(swap_map, 0, 1, false);
+	lock_release(&swap_lock)
+	
+	if( swap_index == BITMAP_ERROR )
+		PANIC ("swap_out: out of slots");
+	else{
+		for( i = 0; i < stride; i++ ){
+			// internal lock exists in disk_write
+			disk_write(swap_disk, stride * swap_index + i, kpage + DISK_SECTOR_SIZE * i);
+		}	
+	}
+	return swap_index;
+}
+
+void swap_in(size_t swap_index, void* kpage){
+	ASSERT (bitmap_test (swap_map, swap_idx)); //  for debug
+
+	disk_sector_t i;
+	swap_disk = disk_get(1,1)
+	
+	
+	for( i = 0; i < stride; i++ ){
+		// internal lock exists in disk_write
+		disk_read(swap_disk, stride * swap_index + i, kpage + DISK_SECTOR_SIZE * i);
+	}
+	lock_acquire(&swap_lock);
+	bitmap_set(swap_map, swap_index, false);
+	lock_release(&swap_lock);
+}
+
+void swap_destroy(size_t swap_index){
+	ASSERT (bitmap_test (swap_map, swap_idx)); //  for debug
+	
+	lock_acquire(&swap_lock);
+	bitmap_set(swap_map, swap_index, false);
+	lock_release(&swap_lock);	
+}
